@@ -122,7 +122,7 @@ input, textarea { -webkit-appearance: none; outline: none; }
 <script>
 // ===== Config =====
 const STORAGE_KEY = 'pfc-tracker-v3';
-const TARGET = { weight: 70, p: 150, f: 55, c: 180, cal: 1800 };
+const TARGET = { weight: 73, p: 180, f: 45, c: 160, cal: 1850 };
 
 // ===== Google Sheets Sync Config =====
 // ↓↓↓ ここにGASのデプロイURLを貼り付け ↓↓↓
@@ -650,7 +650,11 @@ function render() {
     if(p.training?.length||p.trainingTarget) {
       html+=`<div class="card"><div class="card-label">🏋️ トレーニング${p.trainingTarget?' — '+esc(p.trainingTarget):''}</div>`;
       (p.training||[]).forEach((t,i)=>{
-        html+=`<div style="font-size:13px;color:#bbb;margin-bottom:4px"><span style="color:var(--green);min-width:20px;display:inline-block">${i+1}.</span> ${esc(t.name)} ${t.kg?'<span style="color:var(--sub)">'+t.kg+'kg</span>':''} ${t.reps?'<span style="color:var(--sub)">'+t.reps+'rep</span>':''} ${t.sets?'<span style="color:var(--sub)">×'+t.sets+'</span>':''}</div>`;
+        html+=`<div style="font-size:13px;color:#ddd;margin-bottom:8px">
+          <div><span style="color:var(--green);font-weight:600">${i+1}.</span> ${esc(t.name)}</div>`;
+        if(t.detail) html+=`<div style="font-size:12px;color:var(--sub);padding-left:18px;margin-top:2px;line-height:1.5">${esc(t.detail)}</div>`;
+        else if(t.kg||t.reps) html+=`<div style="font-size:12px;color:var(--sub);padding-left:18px;margin-top:2px">${t.kg?t.kg+'kg ':''}${t.reps?t.reps+'rep ':''}${t.sets?'×'+t.sets:''}</div>`;
+        html+=`</div>`;
       });
       html+=`</div>`;
     }
@@ -715,10 +719,10 @@ function render() {
           html+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
             <div style="font-size:11px;color:var(--green);font-weight:600;letter-spacing:1px;margin-bottom:6px">🏋️ TRAINING${e.trainingTarget?' — '+esc(e.trainingTarget):''}</div>`;
           (e.training||[]).forEach((t,i)=>{
-            html+=`<div style="font-size:12px;color:#ccc;margin-bottom:4px;padding-left:4px">
-              <span style="color:var(--green);font-weight:600">${i+1}.</span> ${esc(t.name)}`;
-            if(t.detail) html+=`<div style="font-size:11px;color:var(--sub);padding-left:16px;margin-top:1px">${esc(t.detail)}</div>`;
-            else if(t.kg||t.reps) html+=` <span style="color:var(--sub)">${t.kg?t.kg+'kg ':''}${t.reps?t.reps+'rep ':''}${t.sets?'×'+t.sets:''}</span>`;
+            html+=`<div style="font-size:12px;color:#ddd;margin-bottom:8px;padding-left:4px">
+              <div><span style="color:var(--green);font-weight:600">${i+1}.</span> ${esc(t.name)}</div>`;
+            if(t.detail) html+=`<div style="font-size:11px;color:#aaa;padding-left:18px;margin-top:2px;line-height:1.5;background:rgba(107,181,160,0.06);border-radius:4px;padding:4px 8px 4px 18px">${esc(t.detail)}</div>`;
+            else if(t.kg||t.reps) html+=`<div style="font-size:11px;color:#aaa;padding-left:18px;margin-top:2px">${t.kg?t.kg+'kg ':''}${t.reps?t.reps+'rep ':''}${t.sets?'×'+t.sets:''}</div>`;
             html+=`</div>`;
           });
           html+=`</div>`;
