@@ -323,33 +323,99 @@ function showToast(msg) {
 function parseGeminiText(text) {
   const e = { date:'', weight:'', bodyFat:'', muscleMass:'', bmi:'', visceralFat:'', basalMetabolism:'', bodyAge:'', boneMass:'', pfc:{p:'',f:'',c:'',cal:''}, meals:{breakfast:'',lunch:'',snack:'',dinner:''}, trainingTarget:'', training:[], theme:'', summary:'', rawText: text };
 
-  const dateM = text.match(/【\s*日付\s*】\s*[:\s]*(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})/);
-  if (dateM) {
-    const parts = dateM[1].split(/[\/-]/);
-    e.date = parts[0]+'-'+parts[1].padStart(2,'0')+'-'+parts[2].padStart(2,'0');
+  // === Date: multiple formats ===
+  // Format 1: 【 日付 】 2026/03/14
+  let dateM = text.match(/【\s*日付\s*】\s*[:\s]*(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})/);
+  // Format 2: 【 3/15 (日) ... 】 or 3/15(日)
+  if(!dateM) dateM = text.match(/【[^】]*?(\d{1,2})[\/-](\d{1,2})\s*[（(][日月火水木金土][）)]/);
+  if(dateM) {
+    if(dateM[1].length===4) {
+      const parts = dateM[1].split(/[\/-]/);
+      e.date = parts[0]+'-'+parts[1].padStart(2,'0')+'-'+parts[2].padStart(2,'0');
+    } else {
+      // Month/Day only - assume 2026
+      e.date = '2026-'+dateM[1].padStart(2,'0')+'-'+dateM[2].padStart(2,'0');
+    }
   }
 
+  // === Body composition ===
   const grab = (label) => { const m = text.match(new RegExp(label+'[：:]\\s*約?\\s*([\\d.]+)')); return m ? m[1] : ''; };
   e.weight=grab('体重'); e.bodyFat=grab('体脂肪率'); e.muscleMass=grab('筋肉量'); e.bmi=grab('BMI');
   e.visceralFat=grab('内臓脂肪レベル'); e.basalMetabolism=grab('基礎代謝量'); e.bodyAge=grab('体内年齢'); e.boneMass=grab('推定骨量');
 
-  const pM=text.match(/P[（(].*?[）)][：:].*?約?\s*([\d.]+)/); if(pM) e.pfc.p=pM[1];
-  const fM=text.match(/F[（(].*?[）)][：:].*?約?\s*([\d.]+)/); if(fM) e.pfc.f=fM[1];
-  const cM=text.match(/C[（(].*?[）)][：:].*?約?\s*([\d.]+)/); if(cM) e.pfc.c=cM[1];
-  const calM=text.match(/総カロリー[：:].*?約?\s*([\d,]+)/); if(calM) e.pfc.cal=calM[1].replace(/,/g,'');
+  // === PFC: multiple formats ===
+  // Format 1: P（タンパク質）：約 150 g
+  let pM=text.match(/P[（(].*?[）)][：:].*?約?\s*([\d.]+)/);
+  let fM=text.match(/F[（(].*?[）)][：:].*?約?\s*([\d.]+)/);
+  let cM=text.match(/C[（(].*?[）)][：:].*?約?\s*([\d.]+)/);
+  // Format 2: P138g / F28g / C115g
+  if(!pM) { const m=text.match(/P\s*(\d+)\s*g/); if(m) pM=m; }
+  if(!fM) { const m=text.match(/F\s*(\d+)\s*g/); if(m) fM=m; }
+  if(!cM) { const m=text.match(/C\s*(\d+)\s*g/); if(m) cM=m; }
+  if(pM) e.pfc.p=pM[1];
+  if(fM) e.pfc.f=fM[1];
+  if(cM) e.pfc.c=cM[1];
+  // Calc cal if not found
+  const calM=text.match(/総カロリー[：:].*?約?\s*([\d,]+)/);
+  if(calM) e.pfc.cal=calM[1].replace(/,/g,'');
+  else if(e.pfc.p&&e.pfc.f&&e.pfc.c) e.pfc.cal=String(Math.round((+e.pfc.p)*4+(+e.pfc.f)*9+(+e.pfc.c)*4));
 
-  const targetM=text.match(/対象部位[：:]\s*(.+)/); if(targetM) e.trainingTarget=targetM[1].trim();
-  const exLines=text.match(/・種目\d+[：:]\s*(.+)/g);
-  if(exLines) e.training=exLines.map(l=>{
-    const c=l.replace(/・種目\d+[：:]\s*/,'').trim(); const p=c.split(/\s*\/\s*/);
-    return p.length>=4?{name:p[0],kg:p[1].replace(/\s*kg/i,''),reps:p[2].replace(/\s*rep/i,''),sets:p[3].replace(/\s*set/i,'')}:{name:c,kg:'',reps:'',sets:''};
-  });
+  // === Training ===
+  // Detect target from header: トレーニング記録（胸・肩・三頭＆有酸素）
+  const tgtM=text.match(/トレーニング[^\n]*[（(]([^）)]+)[）)]/);
+  if(tgtM) e.trainingTarget=tgtM[1].trim();
+  if(!e.trainingTarget) { const m2=text.match(/対象部位[：:]\s*(.+)/); if(m2) e.trainingTarget=m2[1].trim(); }
 
-  const mealGrab=(l)=>{const m=text.match(new RegExp(l+'[：:]\\s*(.+)','m'));return m?m[1].trim():'';};
-  e.meals.breakfast=mealGrab('朝食'); e.meals.lunch=mealGrab('昼食'); e.meals.snack=mealGrab('間食'); e.meals.dinner=mealGrab('夕食');
+  // Exercises: ① ② ③ ... or ・種目1: ...
+  const exPatterns = [
+    /[①②③④⑤⑥⑦⑧⑨⑩]\s*(.+)/g,
+    /・種目\d+[：:]\s*(.+)/g
+  ];
+  for(const pat of exPatterns) {
+    let match;
+    while((match=pat.exec(text))!==null) {
+      const line = match[1].trim();
+      // Try to extract name from "name：details" or "name / kg / rep × set"
+      const colonSplit = line.match(/^([^：:]+)[：:](.+)/);
+      if(colonSplit) {
+        e.training.push({name:colonSplit[1].trim(), detail:colonSplit[2].trim(), kg:'', reps:'', sets:''});
+      } else {
+        const slashParts = line.split(/\s*\/\s*/);
+        if(slashParts.length>=4) {
+          e.training.push({name:slashParts[0], kg:slashParts[1].replace(/\s*kg/i,''), reps:slashParts[2].replace(/\s*rep/i,''), sets:slashParts[3].replace(/\s*set/i,''), detail:''});
+        } else {
+          e.training.push({name:line, kg:'', reps:'', sets:'', detail:''});
+        }
+      }
+    }
+    if(e.training.length>0) break;
+  }
 
-  const themeM=text.match(/テーマ[：:]\s*(.+)/); if(themeM) e.theme=themeM[1].trim();
-  const summaryM=text.match(/総評[：:]\s*([\s\S]*?)(?=\n\n|\n【|$)/); if(summaryM) e.summary=summaryM[1].trim();
+  // === Meals: multiple formats ===
+  // Format 1: 【朝食】...\n...\n\n or 【昼食】
+  function grabMealBlock(label) {
+    // Try block format: 【朝食】(description)\n content until next 【 or ■
+    const blockM = text.match(new RegExp('【'+label+'】[（(]?([^）)\n]*)[）)]?\\n([\\s\\S]*?)(?=\\n【|\\n■|$)'));
+    if(blockM) {
+      const header = blockM[1]?.trim() || '';
+      const body = blockM[2]?.trim().split('\n').map(l=>l.replace(/^[・\-]\s*/,'').trim()).filter(Boolean).join('、') || '';
+      return (header ? header+': ' : '') + body;
+    }
+    // Try simple: 朝食：content
+    const simpleM = text.match(new RegExp(label+'[：:]\\s*(.+)','m'));
+    return simpleM ? simpleM[1].trim() : '';
+  }
+  e.meals.breakfast=grabMealBlock('朝食');
+  e.meals.lunch=grabMealBlock('昼食');
+  e.meals.snack=grabMealBlock('間食');
+  e.meals.dinner=grabMealBlock('夕食');
+
+  // === Theme & Summary ===
+  const themeM=text.match(/テーマ[：:]\s*(.+)/);
+  if(themeM) e.theme=themeM[1].trim();
+  // Summary: 総括 or 総評
+  let summaryM=text.match(/(?:総括|総評|振り返り)[^\n]*\n([\s\S]*?)(?=\n■|\n【|$)/);
+  if(summaryM) e.summary=summaryM[1].trim();
 
   return e;
 }
@@ -608,6 +674,10 @@ function render() {
     if(!state.entries.length) html+=`<div class="empty">まだ記録がありません<br>「取込」タブからGeminiのテキストを貼り付けてください</div>`;
     state.entries.forEach(e=>{
       const isOpen=state.expandedDate===e.date;
+      const hasTraining = e.trainingTarget || (e.training&&e.training.length);
+      const hasMeals = e.meals?.breakfast || e.meals?.lunch || e.meals?.dinner;
+      const mealPreview = [e.meals?.breakfast?'朝':'',e.meals?.lunch?'昼':'',e.meals?.snack?'間':'',e.meals?.dinner?'夜':''].filter(Boolean).join('・');
+
       html+=`<div class="card hist-item" onclick="state.expandedDate=state.expandedDate==='${e.date}'?null:'${e.date}';render()">
         <div class="hist-head">
           <div class="hist-date">${e.date}</div>
@@ -619,18 +689,59 @@ function render() {
           <span style="color:var(--green)">C:${e.pfc?.c||0}g</span>
           <span style="color:var(--sub)">${e.pfc?.cal||0}kcal</span>
         </div>`;
+
+      // At-a-glance: training + meals (always visible)
+      if(hasTraining||hasMeals) {
+        html+=`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">`;
+        if(hasTraining) html+=`<span style="font-size:11px;background:#1a2e1a;border:1px solid #2e4a2e;border-radius:6px;padding:2px 8px;color:var(--green)">🏋️ ${esc(e.trainingTarget||(e.training||[]).map(t=>t.name).slice(0,2).join(', '))}</span>`;
+        if(hasMeals) html+=`<span style="font-size:11px;background:#1a1a2e;border:1px solid #2e2e5a;border-radius:6px;padding:2px 8px;color:var(--accent)">🍽️ ${mealPreview}</span>`;
+        html+=`</div>`;
+      }
+
+      // Expanded detail
       if(isOpen) {
-        html+=`<div class="hist-detail">
-          <div class="stats-grid" style="margin-bottom:10px">
-            ${miniStat('筋肉量',e.muscleMass,'kg','var(--green)')}${miniStat('内臓脂肪',e.visceralFat,'','var(--sub)')}${miniStat('基礎代謝',e.basalMetabolism,'kcal','var(--sub)')}
-          </div>
-          ${pfcBar('P',e.pfc?.p,TARGET.p,'var(--purple)')}${pfcBar('F',e.pfc?.f,TARGET.f,'var(--orange)')}${pfcBar('C',e.pfc?.c,TARGET.c,'var(--green)')}`;
-        [['朝食',e.meals?.breakfast],['昼食',e.meals?.lunch],['間食',e.meals?.snack],['夕食',e.meals?.dinner]].forEach(([l,v])=>{
-          if(v) html+=`<div class="hist-meal"><b>${l}:</b> ${esc(v)}</div>`;
-        });
-        if(e.trainingTarget) html+=`<div class="hist-training">🏋️ ${esc(e.trainingTarget)}</div>`;
-        (e.training||[]).forEach(t=>{ html+=`<div style="font-size:12px;color:var(--sub);margin-left:16px">${esc(t.name)} ${t.kg?t.kg+'kg':''} ${t.reps?t.reps+'rep':''} ${t.sets?'×'+t.sets:''}</div>`; });
-        if(e.summary) html+=`<div class="hist-summary">${esc(e.summary)}</div>`;
+        html+=`<div class="hist-detail">`;
+
+        // Body composition
+        html+=`<div class="stats-grid" style="margin-bottom:10px">
+          ${miniStat('筋肉量',e.muscleMass,'kg','var(--green)')}${miniStat('内臓脂肪',e.visceralFat,'','var(--sub)')}${miniStat('基礎代謝',e.basalMetabolism,'kcal','var(--sub)')}
+        </div>`;
+
+        // PFC bars
+        html+=pfcBar('P',e.pfc?.p,TARGET.p,'var(--purple)')+pfcBar('F',e.pfc?.f,TARGET.f,'var(--orange)')+pfcBar('C',e.pfc?.c,TARGET.c,'var(--green)');
+
+        // Training detail
+        if(hasTraining) {
+          html+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--green);font-weight:600;letter-spacing:1px;margin-bottom:6px">🏋️ TRAINING${e.trainingTarget?' — '+esc(e.trainingTarget):''}</div>`;
+          (e.training||[]).forEach((t,i)=>{
+            html+=`<div style="font-size:12px;color:#ccc;margin-bottom:4px;padding-left:4px">
+              <span style="color:var(--green);font-weight:600">${i+1}.</span> ${esc(t.name)}`;
+            if(t.detail) html+=`<div style="font-size:11px;color:var(--sub);padding-left:16px;margin-top:1px">${esc(t.detail)}</div>`;
+            else if(t.kg||t.reps) html+=` <span style="color:var(--sub)">${t.kg?t.kg+'kg ':''}${t.reps?t.reps+'rep ':''}${t.sets?'×'+t.sets:''}</span>`;
+            html+=`</div>`;
+          });
+          html+=`</div>`;
+        }
+
+        // Meals detail
+        if(hasMeals) {
+          html+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--accent);font-weight:600;letter-spacing:1px;margin-bottom:6px">🍽️ MEALS</div>`;
+          [['朝食',e.meals?.breakfast],['昼食',e.meals?.lunch],['間食',e.meals?.snack],['夕食',e.meals?.dinner]].forEach(([l,v])=>{
+            if(v) html+=`<div style="font-size:12px;color:#ccc;margin-bottom:4px"><span style="color:var(--purple);font-weight:600">${l}</span> <span style="color:#999">${esc(v)}</span></div>`;
+          });
+          html+=`</div>`;
+        }
+
+        // Summary
+        if(e.summary) {
+          html+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--sub);font-weight:600;letter-spacing:1px;margin-bottom:4px">📝 SUMMARY</div>
+            <div style="font-size:12px;color:#999;line-height:1.6">${esc(e.summary)}</div>
+          </div>`;
+        }
+
         html+=`<button class="btn-delete" onclick="event.stopPropagation();doDelete('${e.date}')">削除</button>`;
         html+=`</div>`;
       }
