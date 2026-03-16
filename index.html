@@ -212,62 +212,39 @@ async function gasGet() {
   }
 }
 
-// === GAS Write: iframe form submission (bypasses CORS/redirect issues) ===
-function gasPost(payload) {
-  return new Promise((resolve) => {
-    const id = 'gas_' + Date.now();
-    const iframe = document.createElement('iframe');
-    iframe.name = id;
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = GAS_URL;
-    form.target = id;
-
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'payload';
-    input.value = JSON.stringify(payload);
-    form.appendChild(input);
-
-    document.body.appendChild(form);
-    form.submit();
-
-    // Can't read response from cross-origin iframe, just wait
-    setTimeout(() => {
-      try { document.body.removeChild(form); } catch(e){}
-      try { document.body.removeChild(iframe); } catch(e){}
-      resolve(true);
-    }, 3000);
-  });
+// === GAS Write: fetch no-cors POST (reliable, handles large data) ===
+async function gasWrite(payload) {
+  if (!GAS_ENABLED) return true;
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'payload=' + encodeURIComponent(JSON.stringify(payload))
+    });
+    // no-cors returns opaque response, but request IS delivered
+    return true;
+  } catch(e) {
+    console.error('GAS write error:', e);
+    return false;
+  }
 }
 
 async function gasSave(entry) {
-  if (!GAS_ENABLED) return true;
-  try {
-    await gasPost({ action: 'save', entry: entry });
-    return true;
-  } catch(e) { console.error('GAS SAVE error:', e); return false; }
+  return gasWrite({ action: 'save', entry: entry });
 }
 
 async function gasDelete(date) {
-  if (!GAS_ENABLED) return true;
-  try {
-    await gasPost({ action: 'delete', date: date });
-    return true;
-  } catch(e) { console.error('GAS DELETE error:', e); return false; }
+  return gasWrite({ action: 'delete', date: date });
 }
 
 async function gasSaveBulk(entries) {
   if (!GAS_ENABLED) return true;
-  try {
-    for (const entry of entries) {
-      await gasPost({ action: 'save', entry: entry });
-    }
-    return true;
-  } catch(e) { console.error('GAS BULK error:', e); return false; }
+  for (const entry of entries) {
+    await gasWrite({ action: 'save', entry: entry });
+    await new Promise(r => setTimeout(r, 500)); // rate limit
+  }
+  return true;
 }
 
 // ===== Init: load from all sources =====
@@ -333,7 +310,9 @@ function showToast(msg) {
 }
 
 // ===== Parser =====
-function parseGeminiText(text) {
+function parseGeminiText(rawText) {
+  // Normalize line breaks and clean up
+  const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const e = { date:'', weight:'', bodyFat:'', muscleMass:'', bmi:'', visceralFat:'', basalMetabolism:'', bodyAge:'', boneMass:'', pfc:{p:'',f:'',c:'',cal:''}, meals:{breakfast:'',lunch:'',snack:'',dinner:''}, trainingTarget:'', training:[], theme:'', summary:'', rawText: text };
 
   // === Date: multiple formats ===
