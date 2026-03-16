@@ -126,7 +126,7 @@ const TARGET = { weight: 73, p: 180, f: 45, c: 160, cal: 1850 };
 
 // ===== Google Sheets Sync Config =====
 // ↓↓↓ ここにGASのデプロイURLを貼り付け ↓↓↓
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxQVRZky4TFFmmhMl16purpbXhtc0SMX7w6_GgWhQo6wLUbSmGwI2E8GOTkVabMZGpr/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzKaoPkEbgZbqTlW0-nKkpKqrBeV0ysFJ_Z0tqbma-LFY6uKriZ-A17_6QA2373Q7C1/exec';
 // ↑↑↑ 例: 'https://script.google.com/macros/s/XXXXX/exec' ↑↑↑
 
 const GAS_ENABLED = GAS_URL && GAS_URL !== 'YOUR_GAS_DEPLOYMENT_URL_HERE';
@@ -414,8 +414,13 @@ function parseGeminiText(text) {
   // === Theme & Summary ===
   const themeM=text.match(/テーマ[：:]\s*(.+)/);
   if(themeM) e.theme=themeM[1].trim();
-  // Summary: 総括 or 総評
-  let summaryM=text.match(/(?:総括|総評|振り返り)[^\n]*\n([\s\S]*?)(?=\n■|\n【|$)/);
+  // Summary: 総括 or 総評 - handle both same-line and next-line content
+  // Format 1 (template): ・総評：内容がここに...
+  let summaryM=text.match(/[・]?総評[：:]\s*(.+)/);
+  // Format 2 (free): ■ 1日の総括...\n内容
+  if(!summaryM || !summaryM[1].trim()) {
+    summaryM=text.match(/(?:総括|総評|振り返り)[^\n]*\n([\s\S]*?)(?=\n■|\n【|$)/);
+  }
   if(summaryM) e.summary=summaryM[1].trim();
 
   return e;
