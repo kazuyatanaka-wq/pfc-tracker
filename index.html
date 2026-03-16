@@ -215,14 +215,12 @@ async function gasGet() {
 async function gasSave(entry) {
   if (!GAS_ENABLED) return true;
   try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' }, // avoid CORS preflight
-      body: JSON.stringify({ action: 'save', entry: entry })
-    });
-    return true;
+    const data = encodeURIComponent(JSON.stringify(entry));
+    const res = await fetch(GAS_URL + '?action=save&data=' + data, { redirect: 'follow' });
+    const json = await res.json();
+    return json.success || false;
   } catch(e) {
-    console.error('GAS POST error:', e);
+    console.error('GAS SAVE error:', e);
     return false;
   }
 }
@@ -230,12 +228,9 @@ async function gasSave(entry) {
 async function gasDelete(date) {
   if (!GAS_ENABLED) return true;
   try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'delete', date: date })
-    });
-    return true;
+    const res = await fetch(GAS_URL + '?action=delete&date=' + encodeURIComponent(date), { redirect: 'follow' });
+    const json = await res.json();
+    return json.success || false;
   } catch(e) {
     console.error('GAS DELETE error:', e);
     return false;
@@ -245,11 +240,11 @@ async function gasDelete(date) {
 async function gasSaveBulk(entries) {
   if (!GAS_ENABLED) return true;
   try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'saveBulk', entries: entries })
-    });
+    // Send one by one to avoid URL length limits
+    for (const entry of entries) {
+      const data = encodeURIComponent(JSON.stringify(entry));
+      await fetch(GAS_URL + '?action=save&data=' + data, { redirect: 'follow' });
+    }
     return true;
   } catch(e) {
     console.error('GAS BULK error:', e);
@@ -324,16 +319,22 @@ function parseGeminiText(text) {
   const e = { date:'', weight:'', bodyFat:'', muscleMass:'', bmi:'', visceralFat:'', basalMetabolism:'', bodyAge:'', boneMass:'', pfc:{p:'',f:'',c:'',cal:''}, meals:{breakfast:'',lunch:'',snack:'',dinner:''}, trainingTarget:'', training:[], theme:'', summary:'', rawText: text };
 
   // === Date: multiple formats ===
-  // Format 1: 【 日付 】 2026/03/14
+  // Format 1: 【 日付 】 2026/03/14 or 2026-03-14
   let dateM = text.match(/【\s*日付\s*】\s*[:\s]*(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})/);
-  // Format 2: 【 3/15 (日) ... 】 or 3/15(日)
+  // Format 2: 2026年3月16日
+  if(!dateM) dateM = text.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  // Format 3: 【 3/15 (日) ... 】
   if(!dateM) dateM = text.match(/【[^】]*?(\d{1,2})[\/-](\d{1,2})\s*[（(][日月火水木金土][）)]/);
   if(dateM) {
-    if(dateM[1].length===4) {
+    if(dateM[0].includes('年')) {
+      // Format 2: 2026年3月16日
+      e.date = dateM[1]+'-'+dateM[2].padStart(2,'0')+'-'+dateM[3].padStart(2,'0');
+    } else if(dateM[1].length===4) {
+      // Format 1: 2026/03/14
       const parts = dateM[1].split(/[\/-]/);
       e.date = parts[0]+'-'+parts[1].padStart(2,'0')+'-'+parts[2].padStart(2,'0');
     } else {
-      // Month/Day only - assume 2026
+      // Format 3: Month/Day only - assume 2026
       e.date = '2026-'+dateM[1].padStart(2,'0')+'-'+dateM[2].padStart(2,'0');
     }
   }
