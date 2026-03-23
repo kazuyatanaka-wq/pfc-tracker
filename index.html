@@ -813,9 +813,17 @@ function render() {
 
   html+='</div>'; // content
   document.getElementById('app').innerHTML = html;
-  // Show/hide persistent import box
+  // Move persistent importBox into content area (never destroyed by render)
   const ib = document.getElementById('importBox');
-  if(ib) ib.className = (state.view === 'import' && !state.preview) ? 'show' : '';
+  const content = document.querySelector('.content');
+  if(ib && content && state.view === 'import' && !state.preview) {
+    content.insertBefore(ib, content.firstChild);
+    ib.className = 'show';
+  } else if(ib) {
+    ib.className = '';
+    // Move back outside app to keep it safe
+    document.body.appendChild(ib);
+  }
 }
 
 // ===== Init =====
