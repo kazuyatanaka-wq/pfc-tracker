@@ -576,6 +576,10 @@ function bodyFatChart(entries) {
 
 // ===== Main Render =====
 function render() {
+  // CRITICAL: Save textarea value before destroying DOM
+  const existingArea = document.getElementById('pasteArea');
+  if(existingArea && existingArea.value) state.pasteText = existingArea.value;
+
   const last7=state.entries.slice(0,7);
   const avgW=last7.filter(e=>e.weight).length?(last7.reduce((s,e)=>s+(+e.weight||0),0)/last7.filter(e=>e.weight).length).toFixed(1):'-';
 
@@ -615,8 +619,9 @@ function render() {
     html+=`<div class="card">
       <div class="card-label">GEMINI日報を貼り付け</div>
       <div class="desc">Geminiからもらったその日のまとめテキストをそのまま貼り付けてください。自動で解析します。</div>
-      <textarea class="textarea-lg" id="pasteArea" oninput="state.pasteText=this.value" onpaste="setTimeout(()=>{state.pasteText=this.value},50)" onchange="state.pasteText=this.value" placeholder="ここにGeminiのテキストを貼り付け">${esc(state.pasteText)}</textarea>
-      <button class="btn btn-primary mt12" onclick="doParse()">解析する →</button>
+      <textarea class="textarea-lg" id="pasteArea" oninput="state.pasteText=this.value" onpaste="setTimeout(()=>{state.pasteText=document.getElementById('pasteArea').value},100)" placeholder="ここにGeminiのテキストを貼り付け">${esc(state.pasteText)}</textarea>
+      <div style="font-size:11px;color:var(--dim);text-align:right;margin-top:4px" id="charCount">${state.pasteText.length > 0 ? state.pasteText.length + '文字' : ''}</div>
+      <button class="btn btn-primary mt12" id="parseBtn" style="touch-action:manipulation">解析する →</button>
     </div>`;
     if(state.entries.length>0) {
       html+=`<div class="card"><div class="card-label">LATEST</div><div class="stats-grid">
@@ -798,9 +803,15 @@ function render() {
 
   html+='</div>'; // content
   document.getElementById('app').innerHTML = html;
-  // Restore textarea value after render (innerHTML only sets defaultValue, not value)
+  // Restore textarea value after render
   const pa = document.getElementById('pasteArea');
   if(pa && state.pasteText) pa.value = state.pasteText;
+  // Attach parse button listener (more reliable than inline onclick on iOS)
+  const parseBtn = document.getElementById('parseBtn');
+  if(parseBtn) {
+    parseBtn.addEventListener('click', function(e) { e.preventDefault(); doParse(); });
+    parseBtn.addEventListener('touchend', function(e) { e.preventDefault(); doParse(); });
+  }
 }
 
 // ===== Init =====
