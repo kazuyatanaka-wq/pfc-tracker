@@ -136,16 +136,14 @@ function parse(raw){
     if(!ex)ex=ln.match(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*(.+)/);
     if(ex){const c=ex[1].trim(),p=c.split(/\s*\/\s*/);if(p.length>=3)e.training.push({name:p[0],detail:p.slice(1).join(' / ')});else e.training.push({name:c,detail:''})}
   });
-  // If no exercises found but there's a 種目 line without number, grab related fields as detail
-  if(!e.training.length){
-    const nameM=text.match(/[・]?種目[：:]\s*(.+)/);
-    if(nameM){
-      const details=[];const timeM=text.match(/[・]?時間[：:]\s*(.+)/);const calM2=text.match(/[・]?消費カロリー[：:]\s*(.+)/);const hrM=text.match(/[・]?平均心拍[数]?[：:]\s*(.+)/);
-      if(timeM)details.push(timeM[1].trim());if(calM2)details.push(calM2[1].trim());if(hrM)details.push('心拍'+hrM[1].trim());
-      e.training.push({name:nameM[1].trim(),detail:details.join(' / ')});
-      if(!e.trainingTarget)e.trainingTarget=nameM[1].trim();
-    }
+  // Grab detail lines (時間, 消費カロリー, 心拍数) and attach to last exercise if detail is empty
+  if(e.training.length && !e.training[e.training.length-1].detail){
+    const details=[];
+    const timeM=text.match(/[・]?時間[：:]\s*(.+)/);const calM2=text.match(/[・]?消費カロリー[：:]\s*(.+)/);const hrM=text.match(/[・]?平均心拍[数]?[：:]\s*(.+)/);
+    if(timeM)details.push(timeM[1].trim());if(calM2)details.push(calM2[1].trim());if(hrM)details.push('心拍'+hrM[1].trim());
+    if(details.length)e.training[e.training.length-1].detail=details.join(' / ');
   }
+  if(!e.trainingTarget && e.training.length===1)e.trainingTarget=e.training[0].name;
   const ml=l=>{const x=text.match(new RegExp('[・]?'+l+'[：:]\\s*(.+)','m'));return x?x[1].trim():''};
   e.meals.breakfast=ml('朝食');e.meals.lunch=ml('昼食');e.meals.snack=ml('間食');e.meals.dinner=ml('夕食');
   const th=text.match(/テーマ[：:]\s*(.+)/);if(th)e.theme=th[1].trim();
