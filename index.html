@@ -114,10 +114,25 @@ input, textarea { -webkit-appearance: none; outline: none; }
 .mt12 { margin-top: 12px; }
 
 @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+#importBox { display:none; padding:14px 16px; max-width:500px; margin:0 auto; }
+#importBox.show { display:block; }
 </style>
 </head>
 <body>
 <div class="app" id="app"></div>
+
+<!-- Persistent import box - NEVER destroyed by render() -->
+<div id="importBox">
+  <div class="card" style="background:#13132a;border:1px solid #1e1e3a;border-radius:12px;padding:14px">
+    <div style="font-size:10px;color:#555;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">GEMINI日報を貼り付け</div>
+    <textarea id="pasteArea" style="width:100%;min-height:220px;background:#0d0d1a;border:1px solid #2a2a45;border-radius:10px;color:#c0c0c0;font-size:13px;padding:12px;resize:none;font-family:inherit;line-height:1.6;outline:none;box-sizing:border-box" placeholder="ここにGeminiのテキストを貼り付け"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <span id="charCount" style="font-size:11px;color:#555"></span>
+      <span id="parseStatus" style="font-size:11px;color:#ff6b6b"></span>
+    </div>
+    <button id="parseBtn" style="width:100%;padding:14px;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:0.5px;background:linear-gradient(135deg,#7c6bb5,#5a4f8a);color:#fff;border:none;cursor:pointer;margin-top:8px;font-family:inherit;touch-action:manipulation">解析する →</button>
+  </div>
+</div>
 
 <script>
 // ===== Config =====
@@ -436,12 +451,15 @@ function parseGeminiText(rawText) {
 
 // ===== Actions =====
 function doParse() {
-  // Always read directly from the textarea DOM element
   const area = document.getElementById('pasteArea');
-  if(area) state.pasteText = area.value;
-  if(!state.pasteText.trim()) { showToast('テキストを貼り付けてください'); return; }
-  state.preview = parseGeminiText(state.pasteText);
-  if(!state.preview.date) { showToast('日付が認識できませんでした'); return; }
+  const text = area ? area.value : '';
+  if(!text.trim()) { showToast('テキストを貼り付けてください'); return; }
+  state.pasteText = text;
+  state.preview = parseGeminiText(text);
+  if(!state.preview.date) { 
+    document.getElementById('parseStatus').textContent = '⚠️ 日付が認識できません';
+    return; 
+  }
   state.view = 'preview';
   render();
 }
@@ -467,6 +485,9 @@ async function doSave() {
   
   showToast(entry.date+' を保存しました');
   state.preview=null; state.pasteText=''; state.view='history';
+  // Clear persistent textarea
+  const pa = document.getElementById('pasteArea');
+  if(pa) pa.value = '';
   render();
 }
 
@@ -576,10 +597,6 @@ function bodyFatChart(entries) {
 
 // ===== Main Render =====
 function render() {
-  // CRITICAL: Save textarea value before destroying DOM
-  const existingArea = document.getElementById('pasteArea');
-  if(existingArea && existingArea.value) state.pasteText = existingArea.value;
-
   const last7=state.entries.slice(0,7);
   const avgW=last7.filter(e=>e.weight).length?(last7.reduce((s,e)=>s+(+e.weight||0),0)/last7.filter(e=>e.weight).length).toFixed(1):'-';
 
@@ -616,13 +633,6 @@ function render() {
 
   // ===== IMPORT =====
   if(state.view==='import') {
-    html+=`<div class="card">
-      <div class="card-label">GEMINI日報を貼り付け</div>
-      <div class="desc">Geminiからもらったその日のまとめテキストをそのまま貼り付けてください。自動で解析します。</div>
-      <textarea class="textarea-lg" id="pasteArea" oninput="state.pasteText=this.value" onpaste="setTimeout(()=>{state.pasteText=document.getElementById('pasteArea').value},100)" placeholder="ここにGeminiのテキストを貼り付け">${esc(state.pasteText)}</textarea>
-      <div style="font-size:11px;color:var(--dim);text-align:right;margin-top:4px" id="charCount">${state.pasteText.length > 0 ? state.pasteText.length + '文字' : ''}</div>
-      <button class="btn btn-primary mt12" id="parseBtn" style="touch-action:manipulation">解析する →</button>
-    </div>`;
     if(state.entries.length>0) {
       html+=`<div class="card"><div class="card-label">LATEST</div><div class="stats-grid">
         ${miniStat('最新体重',state.entries[0]?.weight,'kg','var(--accent)')}
@@ -803,18 +813,18 @@ function render() {
 
   html+='</div>'; // content
   document.getElementById('app').innerHTML = html;
-  // Restore textarea value after render
-  const pa = document.getElementById('pasteArea');
-  if(pa && state.pasteText) pa.value = state.pasteText;
-  // Attach parse button listener (more reliable than inline onclick on iOS)
-  const parseBtn = document.getElementById('parseBtn');
-  if(parseBtn) {
-    parseBtn.addEventListener('click', function(e) { e.preventDefault(); doParse(); });
-    parseBtn.addEventListener('touchend', function(e) { e.preventDefault(); doParse(); });
-  }
+  // Show/hide persistent import box
+  const ib = document.getElementById('importBox');
+  if(ib) ib.className = (state.view === 'import' && !state.preview) ? 'show' : '';
 }
 
 // ===== Init =====
+// Wire up persistent import box (outside render cycle)
+document.getElementById('parseBtn').addEventListener('click', doParse);
+document.getElementById('pasteArea').addEventListener('input', function() {
+  document.getElementById('charCount').textContent = this.value.length > 0 ? this.value.length + '文字' : '';
+  document.getElementById('parseStatus').textContent = '';
+});
 initEntries();
 </script>
 </body>
