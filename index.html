@@ -144,7 +144,12 @@ function parse(raw){
     if(details.length)e.training[e.training.length-1].detail=details.join(' / ');
   }
   if(!e.trainingTarget && e.training.length===1)e.trainingTarget=e.training[0].name;
-  const ml=l=>{const x=text.match(new RegExp('[・]?'+l+'[：:]\\s*(.+)','m'));return x?x[1].trim():''};
+  // Rest day detection
+  if(!e.trainingTarget && !e.training.length){
+    const rest=text.match(/[・]?(完全休養|完全オフ|レスト|休養日|アクティブレスト)[^。\n]*/);
+    if(rest)e.trainingTarget='休養日';
+  }
+  const ml=l=>{const x=text.match(new RegExp('[・]?'+l+'(?:[（(][^）)]*[）)])?[：:]\\s*(.+)','m'));return x?x[1].trim():''};
   e.meals.breakfast=ml('朝食');e.meals.lunch=ml('昼食');e.meals.snack=ml('間食');e.meals.dinner=ml('夕食');
   const th=text.match(/テーマ[：:]\s*(.+)/);if(th)e.theme=th[1].trim();
   for(const ln of text.split('\n')){if(ln.indexOf('総評')!==-1){const ci=ln.search(/[：:]/);if(ci!==-1){e.summary=ln.substring(ci+1).trim();break}}}
