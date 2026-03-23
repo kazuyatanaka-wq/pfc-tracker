@@ -129,8 +129,23 @@ function parse(raw){
   else if(e.pfc.p&&e.pfc.f&&e.pfc.c)e.pfc.cal=String(Math.round(e.pfc.p*4+e.pfc.f*9+e.pfc.c*4));
   const tgt=text.match(/対象部位[：:]\s*(.+)/);if(tgt)e.trainingTarget=tgt[1].trim();
   if(!e.trainingTarget){const t2=text.match(/トレーニング[^\n]*[（(]([^）)]+)[）)]/);if(t2)e.trainingTarget=t2[1].trim()}
-  text.split('\n').forEach(ln=>{let ex=ln.match(/^[・]?種目\d+[：:]\s*(.+)/);if(!ex)ex=ln.match(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*(.+)/);
-    if(ex){const c=ex[1].trim(),p=c.split(/\s*\/\s*/);if(p.length>=3)e.training.push({name:p[0],detail:p.slice(1).join(' / ')});else e.training.push({name:c,detail:''})}});
+  if(!e.trainingTarget){const t3=text.match(/トレーニング[＆&]?[^\n】]*】/);if(t3){const m3=t3[0].match(/[（(]([^）)]+)[）)]/);if(m3)e.trainingTarget=m3[1].trim()}}
+  text.split('\n').forEach(ln=>{
+    // Match: ・種目1：, ・種目：, ①, ②, etc.
+    let ex=ln.match(/^[・]?種目\d*[：:]\s*(.+)/);
+    if(!ex)ex=ln.match(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*(.+)/);
+    if(ex){const c=ex[1].trim(),p=c.split(/\s*\/\s*/);if(p.length>=3)e.training.push({name:p[0],detail:p.slice(1).join(' / ')});else e.training.push({name:c,detail:''})}
+  });
+  // If no exercises found but there's a 種目 line without number, grab related fields as detail
+  if(!e.training.length){
+    const nameM=text.match(/[・]?種目[：:]\s*(.+)/);
+    if(nameM){
+      const details=[];const timeM=text.match(/[・]?時間[：:]\s*(.+)/);const calM2=text.match(/[・]?消費カロリー[：:]\s*(.+)/);const hrM=text.match(/[・]?平均心拍[数]?[：:]\s*(.+)/);
+      if(timeM)details.push(timeM[1].trim());if(calM2)details.push(calM2[1].trim());if(hrM)details.push('心拍'+hrM[1].trim());
+      e.training.push({name:nameM[1].trim(),detail:details.join(' / ')});
+      if(!e.trainingTarget)e.trainingTarget=nameM[1].trim();
+    }
+  }
   const ml=l=>{const x=text.match(new RegExp('[・]?'+l+'[：:]\\s*(.+)','m'));return x?x[1].trim():''};
   e.meals.breakfast=ml('朝食');e.meals.lunch=ml('昼食');e.meals.snack=ml('間食');e.meals.dinner=ml('夕食');
   const th=text.match(/テーマ[：:]\s*(.+)/);if(th)e.theme=th[1].trim();
