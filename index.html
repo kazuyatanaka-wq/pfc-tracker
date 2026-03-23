@@ -436,8 +436,12 @@ function parseGeminiText(rawText) {
 
 // ===== Actions =====
 function doParse() {
-  if(!state.pasteText.trim()) return;
+  // Always read directly from the textarea DOM element
+  const area = document.getElementById('pasteArea');
+  if(area) state.pasteText = area.value;
+  if(!state.pasteText.trim()) { showToast('テキストを貼り付けてください'); return; }
   state.preview = parseGeminiText(state.pasteText);
+  if(!state.preview.date) { showToast('日付が認識できませんでした'); return; }
   state.view = 'preview';
   render();
 }
@@ -611,8 +615,8 @@ function render() {
     html+=`<div class="card">
       <div class="card-label">GEMINI日報を貼り付け</div>
       <div class="desc">Geminiからもらったその日のまとめテキストをそのまま貼り付けてください。自動で解析します。</div>
-      <textarea class="textarea-lg" id="pasteArea" oninput="state.pasteText=this.value" placeholder="【 日付 】 2026/03/14\n\n【 体組成データ 】\n・体重：82.3 kg\n...\n\nここに貼り付け">${esc(state.pasteText)}</textarea>
-      <button class="btn btn-primary mt12" onclick="state.pasteText=document.getElementById('pasteArea').value;doParse()">解析する →</button>
+      <textarea class="textarea-lg" id="pasteArea" oninput="state.pasteText=this.value" onpaste="setTimeout(()=>{state.pasteText=this.value},50)" onchange="state.pasteText=this.value" placeholder="ここにGeminiのテキストを貼り付け">${esc(state.pasteText)}</textarea>
+      <button class="btn btn-primary mt12" onclick="doParse()">解析する →</button>
     </div>`;
     if(state.entries.length>0) {
       html+=`<div class="card"><div class="card-label">LATEST</div><div class="stats-grid">
@@ -794,6 +798,9 @@ function render() {
 
   html+='</div>'; // content
   document.getElementById('app').innerHTML = html;
+  // Restore textarea value after render (innerHTML only sets defaultValue, not value)
+  const pa = document.getElementById('pasteArea');
+  if(pa && state.pasteText) pa.value = state.pasteText;
 }
 
 // ===== Init =====
